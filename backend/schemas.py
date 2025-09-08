@@ -31,6 +31,7 @@ class QueryResponse(BaseModel):
     answer: str
     citations: List[Citation]
     used_top_k: int
+    prompt: str
 
 
 class StatsResponse(BaseModel):

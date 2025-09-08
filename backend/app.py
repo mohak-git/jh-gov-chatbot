@@ -2,11 +2,11 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend import config
-from backend.schemas import IngestRequest, IngestResponse, QueryRequest, QueryResponse, StatsResponse, HealthResponse
-from backend.vectorstore import FaissStore
-from backend.ingest import ingest_pdfs
-from backend.rag import RAGPipeline, EmbeddingsClient, GeminiClient
+import config
+from schemas import IngestRequest, IngestResponse, QueryRequest, QueryResponse, StatsResponse, HealthResponse
+from vectorstore import FaissStore
+from ingest import ingest_pdfs
+from rag import RAGPipeline, EmbeddingsClient, GeminiClient
 
 app = FastAPI(title="Jharkhand Policies RAG Backend", version="1.0.0")
 
@@ -65,7 +65,7 @@ async def ingest(req: IngestRequest):
 async def query(req: QueryRequest):
     top_k = req.top_k or config.TOP_K_DEFAULT
     result = rag.answer(req.question, top_k=top_k, max_output_tokens=req.max_output_tokens or 512)
-    return QueryResponse(answer=result["answer"], citations=result["citations"], used_top_k=top_k)
+    return QueryResponse(answer=result["answer"], citations=result["citations"], used_top_k=top_k, prompt=result["prompt"])
 
 
-# For local dev: uvicorn backend.app:app --reload
+# For local dev from backend dir: uvicorn app:app --reload

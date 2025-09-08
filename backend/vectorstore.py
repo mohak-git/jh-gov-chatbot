@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Tuple
 import faiss
 import numpy as np
 
-from backend import config
+import config
 
 
 class FaissStore:

@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Tuple
 
 from pypdf import PdfReader
 
-from backend import config
+import config
 
 
 def read_pdf_with_pages(file_path: str) -> List[Tuple[int, str]]:
@@ -76,11 +76,17 @@ def ingest_pdfs(pdf_dir: str | None = None) -> List[Dict[str, Any]]:
         raise FileNotFoundError(f"PDF directory not found: {base}")
 
     pdf_files = [os.path.join(base, f) for f in os.listdir(base) if f.lower().endswith(".pdf")]
+    pdf_files.sort()
     all_chunks: List[Dict[str, Any]] = []
-    for file_path in sorted(pdf_files):
+    print(f"[INGEST] Found {len(pdf_files)} PDF files in {base}")
+    for idx, file_path in enumerate(pdf_files, start=1):
+        print(f"[INGEST] ({idx}/{len(pdf_files)}) Reading: {os.path.basename(file_path)}")
         file_pages = read_pdf_with_pages(file_path)
+        print(f"[INGEST] Pages extracted: {len(file_pages)}")
         chunks = split_into_chunks(file_pages, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
+        print(f"[INGEST] Chunks created: {len(chunks)}")
         for ch in chunks:
             ch["source_file"] = os.path.basename(file_path)
         all_chunks.extend(chunks)
+    print(f"[INGEST] Total chunks: {len(all_chunks)} from {len(pdf_files)} files")
     return all_chunks

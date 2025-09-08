@@ -3,38 +3,41 @@ from typing import List, Dict, Any
 import numpy as np
 import google.generativeai as genai
 
-from backend import config
-from backend.vectorstore import FaissStore
+import config
+from vectorstore import FaissStore
 
 
 class EmbeddingsClient:
-    def __init__(self, model_name: str, api_key: str):
+    def __init__(self, model_name: str, api_key: str, batch_size: int = 64):
         if not api_key:
             raise RuntimeError("GOOGLE_API_KEY not set. Please configure your environment.")
         genai.configure(api_key=api_key)
         self.model_name = model_name
+        self.batch_size = batch_size
 
     def embed(self, texts: List[str]) -> np.ndarray:
         if not texts:
             return np.zeros((0, 768), dtype=np.float32)
-        resp = genai.embed_content(model=self.model_name, content=texts, task_type="retrieval_document")
-        # The SDK returns { 'embedding': [...]} for single, and {'embeddings': [{'values': [...]}, ...]} for batch.
-        if isinstance(resp, dict) and "embeddings" in resp:
-            vectors = [np.array(item["values"], dtype=np.float32) for item in resp["embeddings"]]
-        elif isinstance(resp, dict) and "embedding" in resp:
-            vectors = [np.array(resp["embedding"], dtype=np.float32)]
-        else:
-            # Fallback: try attribute access
-            try:
-                vecs = getattr(resp, "embeddings", None)
-                if vecs is None:
-                    vecs = [getattr(resp, "embedding")]
-                vectors = [np.array(getattr(v, "values", v), dtype=np.float32) for v in vecs]
-            except Exception as e:
-                raise RuntimeError(f"Unexpected embedding response format: {type(resp)}") from e
-        # Ensure 2D
-        arr = np.vstack(vectors)
-        return arr
+        batches: List[np.ndarray] = []
+        total = len(texts)
+        for i in range(0, total, self.batch_size):
+            batch = texts[i:i + self.batch_size]
+            print(f"[EMBED] Embedding batch {i//self.batch_size + 1}/{(total + self.batch_size - 1)//self.batch_size} (size={len(batch)})")
+            resp = genai.embed_content(model=self.model_name, content=batch, task_type="retrieval_document")
+            if isinstance(resp, dict) and "embeddings" in resp:
+                vectors = [np.array(item["values"], dtype=np.float32) for item in resp["embeddings"]]
+            elif isinstance(resp, dict) and "embedding" in resp:
+                vectors = [np.array(resp["embedding"], dtype=np.float32)]
+            else:
+                try:
+                    vecs = getattr(resp, "embeddings", None)
+                    if vecs is None:
+                        vecs = [getattr(resp, "embedding")]
+                    vectors = [np.array(getattr(v, "values", v), dtype=np.float32) for v in vecs]
+                except Exception as e:
+                    raise RuntimeError(f"Unexpected embedding response format: {type(resp)}") from e
+            batches.append(np.vstack(vectors))
+        return np.vstack(batches) if batches else np.zeros((0, 768), dtype=np.float32)
 
 
 class GeminiClient:
@@ -45,6 +48,8 @@ class GeminiClient:
         self.model = genai.GenerativeModel(model_name)
 
     def generate(self, prompt: str, max_output_tokens: int = 512) -> str:
+        print("[LLM] Prompt to Gemini:\n" + (prompt if len(prompt) < 4000 else prompt[:4000] + "\n... [truncated]"))
+        print("[LLM] Generating answer with Gemini…")
         response = self.model.generate_content(prompt, generation_config={"max_output_tokens": max_output_tokens})
         return (response.text or "").strip()
 
@@ -57,16 +62,21 @@ class RAGPipeline:
 
     def build_index(self, chunks: List[Dict[str, Any]]) -> int:
         texts = [c["text"] for c in chunks]
-        metas = [{k: v for k, v in c.items() if k != "text"} for c in chunks]
+        metas = chunks
         if not texts:
             return 0
+        print(f"[INDEX] Embedding {len(texts)} chunks…")
         vectors = self.embedder.embed(texts)
+        print(f"[INDEX] Adding {vectors.shape[0]} vectors to FAISS…")
         self.store.add(vectors, metas)
         self.store.save()
+        print("[INDEX] Saved index and metadata.")
         return vectors.shape[0]
 
     def retrieve(self, question: str, top_k: int) -> List[Dict[str, Any]]:
+        print("[RETRIEVE] Embedding question…")
         q_vec = self.embedder.embed([question])[0]
+        print(f"[RETRIEVE] Searching top {top_k}…")
         hits = self.store.search(q_vec, top_k)
         results: List[Dict[str, Any]] = []
         for score, meta in hits:
@@ -77,6 +87,7 @@ class RAGPipeline:
                 "page_start": int(meta.get("page_start", 0)),
                 "page_end": int(meta.get("page_end", 0)),
             })
+        print(f"[RETRIEVE] Retrieved {len(results)} chunks.")
         return results
 
     def answer(self, question: str, top_k: int, max_output_tokens: int) -> Dict[str, Any]:
@@ -102,4 +113,4 @@ class RAGPipeline:
                 "score": r["score"],
                 "snippet": r["text"][:500],
             })
-        return {"answer": answer_text, "citations": citations}
+        return {"answer": answer_text, "citations": citations, "prompt": prompt}
