@@ -1,103 +1,240 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type Citation = {
+  source_file: string;
+  page_start: number;
+  page_end: number;
+  score: number;
+  snippet: string;
+};
+
+type AssistantMessage = {
+  role: "assistant";
+  content: string;
+  citations: Citation[];
+  prompt?: string;
+};
+
+type UserMessage = {
+  role: "user";
+  content: string;
+};
+
+type Message = AssistantMessage | UserMessage;
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+
+export default function HomePage() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [ingesting, setIngesting] = useState(false);
+  const [topK, setTopK] = useState<number>(6);
+  const [maxTokens, setMaxTokens] = useState<number>(512);
+  const endRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+
+  async function handleIngest() {
+    try {
+      setIngesting(true);
+      const res = await fetch(`${API_BASE}/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force_rebuild: true }),
+      });
+      const data = await res.json();
+      alert(`Ingestion: ${data.message} (files=${data.files_processed}, chunks=${data.chunks_added})`);
+    } catch (e) {
+      console.error(e);
+      alert("Ingestion failed - see console");
+    } finally {
+      setIngesting(false);
+    }
+  }
+
+  async function handleSend() {
+    if (!canSend) return;
+    const question = input.trim();
+    setMessages((prev) => [...prev, { role: "user", content: question }]);
+    setInput("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, top_k: topK, max_output_tokens: maxTokens }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const assistant: AssistantMessage = {
+        role: "assistant",
+        content: data.answer || "",
+        citations: (data.citations || []) as Citation[],
+        prompt: data.prompt,
+      };
+      setMessages((prev) => [...prev, assistant]);
+    } catch (e: any) {
+      console.error(e);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `Error: ${e.message || "failed"}`, citations: [] },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col">
+      <header className="border-b border-neutral-800 px-4 py-3 flex items-center gap-3 sticky top-0 bg-neutral-950/80 backdrop-blur">
+        <div className="font-semibold">Jharkhand Policies Chatbot</div>
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={handleIngest}
+            disabled={ingesting}
+            className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60"
+            title="Rebuild the index from PDFs"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+            {ingesting ? "Ingesting…" : "Rebuild Index"}
+          </button>
+          <div className="flex items-center gap-2 text-sm">
+            <label className="opacity-70">TopK</label>
+            <input
+              type="number"
+              className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+              value={topK}
+              min={1}
+              max={12}
+              onChange={(e) => setTopK(parseInt(e.target.value || "6", 10))}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <label className="opacity-70">MaxTokens</label>
+            <input
+              type="number"
+              className="w-20 bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
+              value={maxTokens}
+              min={128}
+              max={2048}
+              onChange={(e) => setMaxTokens(parseInt(e.target.value || "512", 10))}
+            />
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 container mx-auto max-w-4xl px-4 py-6">
+        <div className="space-y-6">
+          {messages.map((m, idx) => (
+            <MessageBubble key={idx} message={m} />
+          ))}
+          {loading && (
+            <div className="opacity-70 text-sm">Assistant is typing…</div>
+          )}
+          <div ref={endRef} />
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+      <footer className="border-t border-neutral-800 p-4">
+        <div className="container mx-auto max-w-4xl">
+          <div className="flex gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Ask a question about Jharkhand policies…"
+              className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-3 py-2 outline-none focus:border-neutral-600"
+            />
+            <button
+              onClick={handleSend}
+              disabled={!canSend}
+              className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-60"
+            >
+              Send
+            </button>
+          </div>
+          <div className="mt-2 text-xs opacity-60">Backend: {API_BASE}</div>
+        </div>
       </footer>
+    </div>
+  );
+}
+
+function MessageBubble({ message }: { message: Message }) {
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[80%] bg-blue-600 text-white rounded-lg px-4 py-2 whitespace-pre-wrap">
+          {message.content}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-start">
+      <div className="w-full">
+        <div className="max-w-[90%] bg-neutral-900 rounded-lg px-4 py-3 whitespace-pre-wrap">
+          {message.content || ""}
+        </div>
+        {/* Citations */}
+        {message.citations && message.citations.length > 0 && (
+          <div className="mt-2 border border-neutral-800 rounded">
+            <div className="px-3 py-2 text-sm font-medium bg-neutral-900 border-b border-neutral-800">
+              Citations ({message.citations.length})
+            </div>
+            <div className="divide-y divide-neutral-800">
+              {message.citations.map((c, i) => (
+                <div key={i} className="px-3 py-2 text-sm">
+                  <div className="font-medium">
+                    {c.source_file} (pp. {c.page_start}-{c.page_end}) — score {c.score.toFixed(3)}
+                  </div>
+                  {c.snippet && (
+                    <div className="mt-1 opacity-80 line-clamp-3">{c.snippet}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Prompt view */}
+        {message.prompt && <PromptViewer prompt={message.prompt} />}
+      </div>
+    </div>
+  );
+}
+
+function PromptViewer({ prompt }: { prompt: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs px-2 py-1 rounded border border-neutral-800 hover:border-neutral-700"
+      >
+        {open ? "Hide Prompt" : "Show Prompt"}
+      </button>
+      {open && (
+        <pre className="mt-2 text-xs overflow-auto max-h-72 bg-neutral-900 p-3 rounded border border-neutral-800 whitespace-pre-wrap">
+{prompt}
+        </pre>
+      )}
     </div>
   );
 }
