@@ -15,6 +15,7 @@ type AssistantMessage = {
   content: string;
   citations: Citation[];
   prompt?: string;
+  level?: number | null;
 };
 
 type UserMessage = {
@@ -31,29 +32,63 @@ export default function HomePage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [ingesting, setIngesting] = useState(false);
-  const [topK, setTopK] = useState<number>(6);
-  const [maxTokens, setMaxTokens] = useState<number>(512);
+  const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<FileList | null>(null);
+  const [serverStatus, setServerStatus] = useState<any>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  // Check server health on component mount
+  useEffect(() => {
+    async function checkHealth() {
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        if (res.ok) {
+          const data = await res.json();
+          setServerStatus(data);
+        }
+      } catch (e) {
+        console.error('Health check failed:', e);
+      }
+    }
+    checkHealth();
+  }, []);
+
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
 
   async function handleIngest() {
+    if (!uploadedFiles || uploadedFiles.length === 0) {
+      alert("Please select PDF files to upload first");
+      return;
+    }
+
     try {
       setIngesting(true);
+      const formData = new FormData();
+      
+      for (let i = 0; i < uploadedFiles.length; i++) {
+        formData.append('files', uploadedFiles[i]);
+      }
+
       const res = await fetch(`${API_BASE}/ingest`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force_rebuild: true }),
+        body: formData,
       });
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || `HTTP ${res.status}`);
+      }
+      
       const data = await res.json();
-      alert(`Ingestion: ${data.message} (files=${data.files_processed}, chunks=${data.chunks_added})`);
-    } catch (e) {
+      alert(`Ingestion completed: ${data.message}`);
+      setUploadedFiles(null);
+    } catch (e: any) {
       console.error(e);
-      alert("Ingestion failed - see console");
+      alert(`Ingestion failed: ${e.message || "Unknown error"}`);
     } finally {
       setIngesting(false);
     }
@@ -66,28 +101,38 @@ export default function HomePage() {
     setInput("");
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/query`, {
+      const queryParams = new URLSearchParams({
+        question: question,
+      });
+      
+      if (selectedLevel !== null) {
+        queryParams.append('level', selectedLevel.toString());
+      }
+
+      const res = await fetch(`${API_BASE}/query?${queryParams}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, top_k: topK, max_output_tokens: maxTokens }),
       });
+      
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `HTTP ${res.status}`);
       }
+      
       const data = await res.json();
       const assistant: AssistantMessage = {
         role: "assistant",
         content: data.answer || "",
         citations: (data.citations || []) as Citation[],
         prompt: data.prompt,
+        level: selectedLevel,
       };
       setMessages((prev) => [...prev, assistant]);
     } catch (e: any) {
       console.error(e);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: `Error: ${e.message || "failed"}`, citations: [] },
+        { role: "assistant", content: `Error: ${e.message || "failed"}`, citations: [], level: selectedLevel },
       ]);
     } finally {
       setLoading(false);
@@ -104,37 +149,64 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col">
       <header className="border-b border-neutral-800 px-4 py-3 flex items-center gap-3 sticky top-0 bg-neutral-950/80 backdrop-blur">
-        <div className="font-semibold">Jharkhand Policies Chatbot</div>
+        <div className="font-semibold">Jharkhand Multi-Level RAG Chatbot</div>
+        
+        {/* Server Status Indicator */}
+        {serverStatus && (
+          <div className="flex items-center gap-2 text-xs">
+            <div className={`w-2 h-2 rounded-full ${serverStatus.orchestrator === 'ok' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span className="opacity-70">Orchestrator</span>
+            {Object.entries(serverStatus.levels || {}).map(([level, status]: [string, any]) => (
+              <div key={level} className="flex items-center gap-1">
+                <div className={`w-2 h-2 rounded-full ${status.status === 'ok' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span className="opacity-70">{level}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        
         <div className="ml-auto flex items-center gap-3">
+          {/* File Upload */}
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              id="pdf-upload"
+              accept=".pdf"
+              multiple
+              onChange={(e) => setUploadedFiles(e.target.files)}
+              className="hidden"
+            />
+            <label
+              htmlFor="pdf-upload"
+              className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 cursor-pointer text-sm"
+            >
+              {uploadedFiles ? `${uploadedFiles.length} files` : "Select PDFs"}
+            </label>
+          </div>
+          
+          {/* Ingest Button */}
           <button
             onClick={handleIngest}
-            disabled={ingesting}
-            className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60"
-            title="Rebuild the index from PDFs"
+            disabled={ingesting || !uploadedFiles}
+            className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-sm"
+            title="Upload and ingest PDF files"
           >
-            {ingesting ? "Ingesting…" : "Rebuild Index"}
+            {ingesting ? "Ingesting…" : "Ingest PDFs"}
           </button>
+          
+          {/* Level Selection */}
           <div className="flex items-center gap-2 text-sm">
-            <label className="opacity-70">TopK</label>
-            <input
-              type="number"
-              className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
-              value={topK}
-              min={1}
-              max={12}
-              onChange={(e) => setTopK(parseInt(e.target.value || "6", 10))}
-            />
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <label className="opacity-70">MaxTokens</label>
-            <input
-              type="number"
-              className="w-20 bg-neutral-900 border border-neutral-800 rounded px-2 py-1"
-              value={maxTokens}
-              min={128}
-              max={2048}
-              onChange={(e) => setMaxTokens(parseInt(e.target.value || "512", 10))}
-            />
+            <label className="opacity-70">Level:</label>
+            <select
+              value={selectedLevel === null ? '' : selectedLevel}
+              onChange={(e) => setSelectedLevel(e.target.value === '' ? null : parseInt(e.target.value))}
+              className="bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm"
+            >
+              <option value="">Auto</option>
+              <option value="0">Level 0 (General)</option>
+              <option value="1">Level 1 (Summary)</option>
+              <option value="2">Level 2 (Technical)</option>
+            </select>
           </div>
         </div>
       </header>
@@ -158,7 +230,7 @@ export default function HomePage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Ask a question about Jharkhand policies…"
+              placeholder={selectedLevel === null ? "Ask a question about Jharkhand policies…" : `Ask a Level ${selectedLevel} question…`}
               className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-3 py-2 outline-none focus:border-neutral-600"
             />
             <button
@@ -169,7 +241,10 @@ export default function HomePage() {
               Send
             </button>
           </div>
-          <div className="mt-2 text-xs opacity-60">Backend: {API_BASE}</div>
+          <div className="mt-2 text-xs opacity-60">
+            Backend: {API_BASE} | 
+            {selectedLevel === null ? 'Auto-level selection' : `Level ${selectedLevel} queries`}
+          </div>
         </div>
       </footer>
     </div>
@@ -190,6 +265,14 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className="flex justify-start">
       <div className="w-full">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="text-xs opacity-60">Assistant</div>
+          {message.level !== undefined && (
+            <div className="text-xs px-2 py-1 rounded bg-blue-600/20 text-blue-400">
+              Level {message.level}
+            </div>
+          )}
+        </div>
         <div className="max-w-[90%] bg-neutral-900 rounded-lg px-4 py-3 whitespace-pre-wrap">
           {message.content || ""}
         </div>
