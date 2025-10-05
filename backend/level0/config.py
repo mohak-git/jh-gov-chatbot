@@ -3,18 +3,19 @@ from dotenv import load_dotenv
 
 # Resolve paths relative to this file's directory
 _BACKEND_DIR = os.path.dirname(__file__)
-_ROOT_DIR = os.path.dirname(_BACKEND_DIR)
 
 # Load .env from backend directory (works regardless of CWD)
 load_dotenv(os.path.join(_BACKEND_DIR, ".env"))
 
 # Directories
-INDEX_DIR = os.getenv("INDEX_DIR", os.path.normpath(os.path.join(_ROOT_DIR, "experiment")))
+INDEX_DIR = os.getenv(
+    "INDEX_DIR", os.path.normpath(os.path.join(_BACKEND_DIR, "index"))
+)
 PDFS_DIR = os.getenv("PDFS_DIR", os.path.normpath(os.path.join(_BACKEND_DIR, "pdfs")))
 
 # Models
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-1.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash-lite")
 
 # Chunking
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1200"))

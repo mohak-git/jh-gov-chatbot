@@ -24,7 +24,7 @@ type UserMessage = {
 
 type Message = AssistantMessage | UserMessage;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:9000";
 
 export default function HomePage() {
   const [messages, setMessages] = useState<Message[]>([]);
