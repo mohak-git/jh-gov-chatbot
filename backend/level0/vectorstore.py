@@ -5,8 +5,6 @@ from typing import List, Dict, Any, Tuple
 import faiss
 import numpy as np
 
-import config
-
 
 class FaissStore:
     def __init__(self, index_path: str, metadata_path: str):
@@ -29,7 +27,9 @@ class FaissStore:
             with open(self.metadata_path, "r", encoding="utf-8") as f:
                 payload = json.load(f)
                 # keys are strings; convert to int
-                self.id_to_meta = {int(k): v for k, v in payload.get("id_to_meta", {}).items()}
+                self.id_to_meta = {
+                    int(k): v for k, v in payload.get("id_to_meta", {}).items()
+                }
                 self._next_id = int(payload.get("next_id", vectors))
         else:
             self.id_to_meta = {}
@@ -40,7 +40,11 @@ class FaissStore:
         if self.index is not None:
             faiss.write_index(self.index, self.index_path)
         with open(self.metadata_path, "w", encoding="utf-8") as f:
-            json.dump({"id_to_meta": self.id_to_meta, "next_id": self._next_id}, f, ensure_ascii=False)
+            json.dump(
+                {"id_to_meta": self.id_to_meta, "next_id": self._next_id},
+                f,
+                ensure_ascii=False,
+            )
 
     def add(self, embeddings: np.ndarray, metadatas: List[Dict[str, Any]]):
         assert embeddings.ndim == 2
@@ -54,7 +58,9 @@ class FaissStore:
             self.id_to_meta[start_id + i] = meta
         self._next_id += embeddings.shape[0]
 
-    def search(self, query_emb: np.ndarray, top_k: int) -> List[Tuple[float, Dict[str, Any]]]:
+    def search(
+        self, query_emb: np.ndarray, top_k: int
+    ) -> List[Tuple[float, Dict[str, Any]]]:
         assert query_emb.ndim == 1
         # normalize
         norm = np.linalg.norm(query_emb) + 1e-12
@@ -75,12 +81,30 @@ class FaissStore:
     def stats(self) -> Dict[str, Any]:
         return {
             "vectors": 0 if self.index is None else int(self.index.ntotal),
-            "files_indexed": len({m.get("source_file") for m in self.id_to_meta.values()}),
+            "files_indexed": len(
+                {m.get("source_file") for m in self.id_to_meta.values()}
+            ),
             "index_path": os.path.abspath(self.index_path),
             "metadata_path": os.path.abspath(self.metadata_path),
             "index_exists": os.path.exists(self.index_path),
             "last_modified": _last_modified(self.index_path),
         }
+
+    def reset(self):
+        """Reset index and metadata completely."""
+        # Delete files if they exist
+        for f in [self.index_path, self.metadata_path]:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except Exception as e:
+                # Don’t crash the whole service — just log
+                print(f"Warning: failed to remove {f}: {e}")
+
+        # Reset in-memory state
+        self.index = None
+        self.id_to_meta = {}
+        self._next_id = 0
 
 
 def _last_modified(path: str) -> str | None:
@@ -88,6 +112,7 @@ def _last_modified(path: str) -> str | None:
         if os.path.exists(path):
             ts = os.path.getmtime(path)
             from datetime import datetime
+
             return datetime.fromtimestamp(ts).isoformat()
         return None
     except Exception:
