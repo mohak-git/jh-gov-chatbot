@@ -7,6 +7,8 @@ import requests
 import orchestrator.config as config
 import os
 
+from fastapi.middleware.cors import CORSMiddleware
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -14,6 +16,16 @@ PDF_DIR = os.path.join(os.path.dirname(__file__), "pdfs")
 os.makedirs(PDF_DIR, exist_ok=True)
 
 app = FastAPI(title="Multi-Level RAG Orchestrator Agent", version="1.0.0")
+
+
+allowed_origins = getattr(config, "ALLOWED_ORIGINS", ["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
