@@ -50,7 +50,7 @@ export default function HomePage() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [ingesting, setIngesting] = useState(false);
-    const [selectedLevel, setSelectedLevel] = useState<number>(2);
+    const [selectedLevel, setSelectedLevel] = useState<number>(3);
     const [uploadedFiles, setUploadedFiles] = useState<FileList | null>(null);
     const [serverStatus, setServerStatus] = useState<any>(null);
     const [isLevelDropdownOpen, setIsLevelDropdownOpen] = useState(false);
@@ -131,10 +131,10 @@ export default function HomePage() {
 
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-            const data = await res.json();
+            await res.json();
             setUploadedFiles(null);
             if (fileInputRef.current) fileInputRef.current.value = "";
-        } catch (e: any) {
+        } catch (e) {
             console.error(e);
         } finally {
             setIngesting(false);
@@ -150,8 +150,8 @@ export default function HomePage() {
 
         try {
             const queryParams = new URLSearchParams({
-                question: question,
-                level: selectedLevel.toString(),
+                question,
+                ...(selectedLevel !== 3 && { level: selectedLevel.toString() }),
             });
 
             const res = await fetch(`${API_BASE}/query?${queryParams}`, {
@@ -214,6 +214,13 @@ export default function HomePage() {
             icon: FiCode,
             color: "from-purple-500 to-indigo-500",
             description: "Detailed analysis with technical depth",
+        },
+        3: {
+            name: "Auto",
+            icon: FiInfo,
+            color: "from-orange-500 to-yellow-500",
+            description:
+                "Automatically detects the best level for the question",
         },
     };
 
@@ -452,7 +459,7 @@ export default function HomePage() {
                                         exit={{ opacity: 0, y: -10 }}
                                         className="absolute top-full right-0 mt-2 w-64 bg-gray-800 border border-gray-600/50 rounded-xl shadow-2xl backdrop-blur-xl z-50"
                                     >
-                                        {[2, 1, 0].map((level) => {
+                                        {[3, 2, 1, 0].map((level) => {
                                             const Config =
                                                 LevelConfig[
                                                     level as keyof typeof LevelConfig
@@ -502,7 +509,7 @@ export default function HomePage() {
                 <div className="h-full max-w-4xl mx-auto">
                     {messages.length === 0 ? (
                         <div className="h-full flex items-center justify-center p-8">
-                            <div className="text-center max-w-md">
+                            <div className="text-center max-w-xl">
                                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 to-indigo-500/20 mb-6">
                                     <FiBook className="w-8 h-8 text-purple-400" />
                                 </div>
@@ -515,7 +522,7 @@ export default function HomePage() {
                                     General, Summary, or Technical responses.
                                 </p>
 
-                                <div className="grid grid-cols-3 gap-4 mt-8">
+                                <div className="grid grid-cols-4 gap-4 mt-8">
                                     {Object.entries(LevelConfig).map(
                                         ([level, config]) => (
                                             <div
@@ -570,7 +577,7 @@ export default function HomePage() {
                                             </div>
                                             <div className="bg-gray-800/50 rounded-2xl px-4 py-4 border border-gray-700/50 backdrop-blur-sm">
                                                 <div className="flex space-x-2">
-                                                    {[0, 1, 2].map((i) => (
+                                                    {[0, 1, 2, 3].map((i) => (
                                                         <motion.div
                                                             key={i}
                                                             className="w-2 h-2 bg-purple-400 rounded-full"
@@ -602,7 +609,7 @@ export default function HomePage() {
             <footer className="border-t border-gray-700/50 bg-gray-900/80 backdrop-blur-xl p-6">
                 <div className="max-w-4xl mx-auto">
                     <div className="flex gap-3 items-end">
-                        <div className="flex-1 relative">
+                        <div className="flex-1 px-2.5 relative flex items-center rounded-2xl bg-gray-800/50 border border-gray-600/50 hover:border-purple-500/50 focus:ring-1 hover:ring-purple-500/30">
                             <textarea
                                 ref={textareaRef}
                                 value={input}
@@ -614,12 +621,12 @@ export default function HomePage() {
                                     scrollbarWidth: "none",
                                     msOverflowStyle: "none",
                                 }}
-                                className="w-full resize-none bg-gray-800/50 border border-gray-600/50 rounded-2xl px-4 py-3 pr-12 outline-none focus:border-purple-500/50 text-white placeholder-gray-400 transition-all duration-200 backdrop-blur-sm focus:ring-1 focus:ring-purple-500/30"
+                                className="w-full resize-none rounded-2xl px-4 py-3 pr-12 outline-none text-white placeholder-gray-400 transition-all duration-200 backdrop-blur-sm"
                             />
                             <button
                                 onClick={handleSend}
                                 disabled={!canSend}
-                                className="absolute right-2 bottom-2 p-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-purple-500/20"
+                                className="p-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-purple-500/20"
                             >
                                 <FiSend className="w-4 h-4" />
                             </button>
@@ -681,11 +688,16 @@ function MessageBubble({ message }: { message: Message }) {
             name: "Technical",
             description: "Detailed analysis",
         },
+        3: {
+            color: "from-orange-500 to-yellow-500",
+            name: "Auto",
+            description: "Most suitable answer",
+        },
     };
 
     const levelConfig =
         LevelConfig[message.level as keyof typeof LevelConfig] ||
-        LevelConfig[2];
+        LevelConfig[3];
 
     return (
         <motion.div
@@ -715,7 +727,9 @@ function MessageBubble({ message }: { message: Message }) {
                             levelConfig.color.split(" ")[1].split("-")[1]
                         }-300 rounded-full text-xs`}
                     >
-                        Level {message.level}
+                        {message.level === 3
+                            ? "Auto"
+                            : "Level " + message.level}
                     </div>
                 </div>
                 <div className="bg-gray-800/50 rounded-2xl px-5 py-4 border border-gray-700/50 backdrop-blur-sm shadow-xl">
@@ -785,7 +799,7 @@ function MessageBubble({ message }: { message: Message }) {
                                                 </div>
                                                 {c.snippet && (
                                                     <div className="mt-3 text-gray-300 text-sm leading-relaxed bg-gray-800/40 p-3 rounded-lg">
-                                                        "{c.snippet}"
+                                                        &apos;{c.snippet}&apos;
                                                     </div>
                                                 )}
                                             </div>
