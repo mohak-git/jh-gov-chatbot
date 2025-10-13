@@ -42,7 +42,7 @@ class Summarizer:
         Compress a chunk of text into a smaller summary for the next level.
 
         :param text: Full text to summarize
-        :param ratio: Fraction of original size (e.g., 0.2 means ~20%)
+        :param target_chars: target number of characters in the summary
         :param level_from: Source level name (for logging)
         :param level_to: Target level name (for logging)
         :return: Compressed summary text
@@ -55,8 +55,8 @@ class Summarizer:
         prompt = (
             f"You are an assistant compressing government scheme documents.\n"
             f"Summarize the following text to approximately {target_chars} characters."
-            f"Preserve the key details needed"
-            f"for answering queries at the {level_to} level."
+            f"Preserve all key details needed"
+            f"for answering queries."
             f"---\n{text}\n---\n\n"
             f"Now provide the compressed summary:"
         )
