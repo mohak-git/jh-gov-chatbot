@@ -57,7 +57,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             "role": user.get("role", "user"),
         }
     )
-    logger.info(f"User {user['username']} {access_token} logged in successfully")
+    logger.info(f"User {user['username']} logged in successfully")
     return {
         "access_token": access_token,
         "token_type": "bearer",

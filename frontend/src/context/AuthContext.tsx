@@ -40,7 +40,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     useEffect(() => {
         const checkAuth = async () => {
             const storedToken = await localStorage.getItem("jhgovtchatbot_token");
-            console.log(storedToken)
             if (!storedToken) {
                 setLoading(false);
                 return;
