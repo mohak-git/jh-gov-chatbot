@@ -8,11 +8,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from orchestrator.agent import run_query
 from orchestrator.utils import save_uploaded_pdfs
 from orchestrator.config import PDFS_DIR
+
 # Setup logging
 logger = setup_logging(__name__)
 
 # Initialize router
 router = APIRouter(tags=["Gateway"])
+
 
 # Query endpoint
 @router.post("/query")
@@ -35,6 +37,8 @@ async def ingest_gateway(
     files: List[UploadFile] = File(...),
     current_user: UserDB = Depends(get_current_user),
 ):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to ingest files")
     try:
         pdf_paths = save_uploaded_pdfs(files, dest_dir=PDFS_DIR)
         result = run_query(pdf_paths, action="ingest")

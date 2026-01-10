@@ -2,6 +2,8 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
 import { FaFilePdf } from "react-icons/fa";
 import {
     FiAlertCircle,
@@ -43,9 +45,11 @@ type UserMessage = {
 
 type Message = AssistantMessage | UserMessage;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:9000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
 export default function HomePage() {
+    const { user, loading: authLoading, token, logout } = useAuth();
+    const router = useRouter();
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
@@ -58,6 +62,10 @@ export default function HomePage() {
     const endRef = useRef<HTMLDivElement | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (!authLoading && !user) router.push("/login");
+    }, [user, authLoading, router]);
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -126,6 +134,7 @@ export default function HomePage() {
 
             const res = await fetch(`${API_BASE}/ingest`, {
                 method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
                 body: formData,
             });
 
@@ -156,7 +165,10 @@ export default function HomePage() {
 
             const res = await fetch(`${API_BASE}/query?${queryParams}`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
             });
 
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -240,6 +252,13 @@ export default function HomePage() {
 
     const ServerStatusIcon = getServerStatusIcon();
 
+    if (authLoading || !user)
+        return (
+            <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">
+                Loading...
+            </div>
+        );
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex flex-col">
             {/* Header */}
@@ -265,6 +284,18 @@ export default function HomePage() {
                     </div>
 
                     <div className="flex items-center gap-4">
+                        {/* User Profile / Logout */}
+                        <div className="flex items-center gap-3 mr-4 border-r border-gray-700 pr-4">
+                            <div className="text-sm font-medium text-white">
+                                {user.username}
+                            </div>
+                            <button
+                                onClick={logout}
+                                className="px-3 py-1.5 text-xs bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors">
+                                Logout
+                            </button>
+                        </div>
+
                         {/* Server Status */}
                         <div className="relative">
                             <button
@@ -277,11 +308,9 @@ export default function HomePage() {
                                         : serverStatus?.status === "warning"
                                         ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
                                         : "border-red-500/50 bg-red-500/10 text-red-300"
-                                }`}
-                            >
+                                }`}>
                                 <div
-                                    className={`w-3 h-3 rounded-full ${getServerStatusColor()}`}
-                                ></div>
+                                    className={`w-3 h-3 rounded-full ${getServerStatusColor()}`}></div>
                                 <span className="text-sm font-medium">
                                     Server
                                 </span>
@@ -298,8 +327,7 @@ export default function HomePage() {
                                         initial={{ opacity: 0, y: -10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -10 }}
-                                        className="absolute top-full right-0 mt-2 w-64 bg-gray-800 border border-gray-600/50 rounded-xl shadow-2xl backdrop-blur-xl z-50 p-4"
-                                    >
+                                        className="absolute top-full right-0 mt-2 w-64 bg-gray-800 border border-gray-600/50 rounded-xl shadow-2xl backdrop-blur-xl z-50 p-4">
                                         <div className="flex items-center gap-2 mb-2">
                                             <ServerStatusIcon
                                                 className={`w-5 h-5 ${
@@ -362,65 +390,70 @@ export default function HomePage() {
                             </AnimatePresence>
                         </div>
 
-                        {/* File Upload */}
-                        <div className="relative">
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept=".pdf"
-                                multiple
-                                onChange={(e) =>
-                                    setUploadedFiles(e.target.files)
-                                }
-                                className="hidden"
-                            />
-                            <button
-                                onClick={() => fileInputRef.current?.click()}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all duration-200 ${
-                                    uploadedFiles
-                                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
-                                        : "border-gray-600/50 bg-gray-800/50 text-gray-300 hover:border-gray-500"
-                                }`}
-                            >
-                                <FiFile className="w-4 h-4" />
-                                <span className="text-sm">
-                                    {uploadedFiles
-                                        ? `${uploadedFiles.length} file${
-                                              uploadedFiles.length > 1
-                                                  ? "s"
-                                                  : ""
-                                          }`
-                                        : "Upload PDFs"}
-                                </span>
-                                {uploadedFiles && (
+                        {/* File Upload & Ingest - Admin Only */}
+                        {user?.role === "admin" && (
+                            <>
+                                <div className="relative">
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept=".pdf"
+                                        multiple
+                                        onChange={(e) =>
+                                            setUploadedFiles(e.target.files)
+                                        }
+                                        className="hidden"
+                                    />
                                     <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setUploadedFiles(null);
-                                            if (fileInputRef.current)
-                                                fileInputRef.current.value = "";
-                                        }}
-                                        className="ml-1 -mr-1 w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600"
-                                    >
-                                        <FiX className="w-3 h-3" />
+                                        onClick={() =>
+                                            fileInputRef.current?.click()
+                                        }
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all duration-200 ${
+                                            uploadedFiles
+                                                ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
+                                                : "border-gray-600/50 bg-gray-800/50 text-gray-300 hover:border-gray-500"
+                                        }`}>
+                                        <FiFile className="w-4 h-4" />
+                                        <span className="text-sm">
+                                            {uploadedFiles
+                                                ? `${
+                                                      uploadedFiles.length
+                                                  } file${
+                                                      uploadedFiles.length > 1
+                                                          ? "s"
+                                                          : ""
+                                                  }`
+                                                : "Upload PDFs"}
+                                        </span>
+                                        {uploadedFiles && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setUploadedFiles(null);
+                                                    if (fileInputRef.current)
+                                                        fileInputRef.current.value =
+                                                            "";
+                                                }}
+                                                className="ml-1 -mr-1 w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600">
+                                                <FiX className="w-3 h-3" />
+                                            </button>
+                                        )}
                                     </button>
-                                )}
-                            </button>
-                        </div>
+                                </div>
 
-                        {/* Ingest Button */}
-                        <button
-                            onClick={handleIngest}
-                            disabled={ingesting || !uploadedFiles}
-                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-medium hover:from-emerald-600 hover:to-teal-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-emerald-500/20"
-                        >
-                            {ingesting ? (
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            ) : (
-                                <IoCheckmarkCircle className="w-4 h-4" />
-                            )}
-                            {ingesting ? "Processing..." : "Process"}
-                        </button>
+                                <button
+                                    onClick={handleIngest}
+                                    disabled={ingesting || !uploadedFiles}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-medium hover:from-emerald-600 hover:to-teal-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-emerald-500/20">
+                                    {ingesting ? (
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <IoCheckmarkCircle className="w-4 h-4" />
+                                    )}
+                                    {ingesting ? "Processing..." : "Process"}
+                                </button>
+                            </>
+                        )}
 
                         {/* Level Selector */}
                         <div className="relative">
@@ -428,8 +461,7 @@ export default function HomePage() {
                                 onClick={() =>
                                     setIsLevelDropdownOpen(!isLevelDropdownOpen)
                                 }
-                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800/50 border border-gray-600/50 hover:border-gray-500 transition-all duration-200"
-                            >
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800/50 border border-gray-600/50 hover:border-gray-500 transition-all duration-200">
                                 <div
                                     className={`w-3 h-3 rounded-full bg-gradient-to-r ${
                                         LevelConfig[
@@ -457,8 +489,7 @@ export default function HomePage() {
                                         initial={{ opacity: 0, y: -10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -10 }}
-                                        className="absolute top-full right-0 mt-2 w-64 bg-gray-800 border border-gray-600/50 rounded-xl shadow-2xl backdrop-blur-xl z-50"
-                                    >
+                                        className="absolute top-full right-0 mt-2 w-64 bg-gray-800 border border-gray-600/50 rounded-xl shadow-2xl backdrop-blur-xl z-50">
                                         {[3, 2, 1, 0].map((level) => {
                                             const Config =
                                                 LevelConfig[
@@ -478,11 +509,9 @@ export default function HomePage() {
                                                         selectedLevel === level
                                                             ? "bg-gray-700/50"
                                                             : "hover:bg-gray-700/30"
-                                                    } first:rounded-t-xl last:rounded-b-xl`}
-                                                >
+                                                    } first:rounded-t-xl last:rounded-b-xl`}>
                                                     <div
-                                                        className={`w-10 h-10 rounded-lg bg-gradient-to-r ${Config.color} flex items-center justify-center`}
-                                                    >
+                                                        className={`w-10 h-10 rounded-lg bg-gradient-to-r ${Config.color} flex items-center justify-center`}>
                                                         <Icon className="w-5 h-5 text-white" />
                                                     </div>
                                                     <div>
@@ -532,11 +561,9 @@ export default function HomePage() {
                                                     parseInt(level)
                                                         ? `border-purple-500/50 bg-purple-500/10`
                                                         : `border-gray-700/50 bg-gray-800/30`
-                                                }`}
-                                            >
+                                                }`}>
                                                 <div
-                                                    className={`w-10 h-10 rounded-lg bg-gradient-to-r ${config.color} flex items-center justify-center mx-auto mb-3`}
-                                                >
+                                                    className={`w-10 h-10 rounded-lg bg-gradient-to-r ${config.color} flex items-center justify-center mx-auto mb-3`}>
                                                     <config.icon className="w-5 h-5 text-white" />
                                                 </div>
                                                 <h3 className="font-medium mb-1">
@@ -561,8 +588,7 @@ export default function HomePage() {
                                     <motion.div
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
-                                        className="flex justify-start"
-                                    >
+                                        className="flex justify-start">
                                         <div className="max-w-[80%]">
                                             <div className="flex items-center gap-3 mb-3">
                                                 <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full flex items-center justify-center">
@@ -626,8 +652,7 @@ export default function HomePage() {
                             <button
                                 onClick={handleSend}
                                 disabled={!canSend}
-                                className="p-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-purple-500/20"
-                            >
+                                className="p-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 text-white hover:from-purple-600 hover:to-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-purple-500/20">
                                 <FiSend className="w-4 h-4" />
                             </button>
                         </div>
@@ -635,8 +660,7 @@ export default function HomePage() {
                     <div className="mt-3 flex justify-between items-center text-xs text-gray-500">
                         <div className="flex items-center gap-2">
                             <div
-                                className={`w-2 h-2 rounded-full ${getServerStatusColor()}`}
-                            ></div>
+                                className={`w-2 h-2 rounded-full ${getServerStatusColor()}`}></div>
                             <span>
                                 {serverStatus?.status === "healthy"
                                     ? "Server operational"
@@ -661,8 +685,7 @@ function MessageBubble({ message }: { message: Message }) {
             <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="flex justify-end"
-            >
+                className="flex justify-end">
                 <div className="max-w-[80%] bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-2xl rounded-br-md px-5 py-4 shadow-xl">
                     <div className="whitespace-pre-wrap break-words">
                         {message.content}
@@ -703,13 +726,11 @@ function MessageBubble({ message }: { message: Message }) {
         <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="flex justify-start"
-        >
+            className="flex justify-start">
             <div className="max-w-[80%]">
                 <div className="flex items-center gap-3 mb-3">
                     <div
-                        className={`w-8 h-8 bg-gradient-to-r ${levelConfig.color} rounded-full flex items-center justify-center`}
-                    >
+                        className={`w-8 h-8 bg-gradient-to-r ${levelConfig.color} rounded-full flex items-center justify-center`}>
                         <FiBook className="w-4 h-4 text-white" />
                     </div>
                     <div>
@@ -725,8 +746,7 @@ function MessageBubble({ message }: { message: Message }) {
                             levelConfig.color
                         }/20 text-${
                             levelConfig.color.split(" ")[1].split("-")[1]
-                        }-300 rounded-full text-xs`}
-                    >
+                        }-300 rounded-full text-xs`}>
                         {message.level === 3
                             ? "Auto"
                             : "Level " + message.level}
@@ -755,8 +775,7 @@ function MessageBubble({ message }: { message: Message }) {
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ delay: i * 0.1 }}
-                                        className="text-sm p-4 bg-gray-700/30 rounded-xl border border-gray-600/30 hover:border-gray-500/50 transition-colors"
-                                    >
+                                        className="text-sm p-4 bg-gray-700/30 rounded-xl border border-gray-600/30 hover:border-gray-500/50 transition-colors">
                                         <div className="flex items-start gap-3">
                                             <div className="mt-0.5 flex-shrink-0">
                                                 {c.source_file
@@ -786,8 +805,7 @@ function MessageBubble({ message }: { message: Message }) {
                                                                         c.score *
                                                                         100
                                                                     }%`,
-                                                                }}
-                                                            ></div>
+                                                                }}></div>
                                                         </div>
                                                         <span>
                                                             {(
@@ -824,13 +842,11 @@ function PromptViewer({ prompt }: { prompt: string }) {
         <div className="mt-4">
             <button
                 onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-300 transition-colors group"
-            >
+                className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-300 transition-colors group">
                 <div
                     className={`w-4 h-4 transition-transform duration-200 ${
                         open ? "rotate-180" : ""
-                    } group-hover:scale-110`}
-                >
+                    } group-hover:scale-110`}>
                     {open ? (
                         <FiChevronUp className="w-full h-full" />
                     ) : (
@@ -845,8 +861,7 @@ function PromptViewer({ prompt }: { prompt: string }) {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="mt-2 overflow-hidden"
-                    >
+                        className="mt-2 overflow-hidden">
                         <div className="p-4 bg-gray-900 rounded-xl border border-gray-700/50 backdrop-blur-sm">
                             <div className="text-xs text-gray-400 mb-2 font-mono uppercase tracking-wider flex items-center gap-2">
                                 <FiInfo className="w-3 h-3" />

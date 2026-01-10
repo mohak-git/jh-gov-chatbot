@@ -19,6 +19,7 @@ class UserLogin(BaseModel):
 
 class UserResponse(UserBase):
     id: str
+    role: str
 
     class Config:
         from_attributes = True
@@ -29,8 +30,10 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
-class TokenData(BaseModel):
+class TokenData(Token):
     username: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
 
 
 # RAG Schemas

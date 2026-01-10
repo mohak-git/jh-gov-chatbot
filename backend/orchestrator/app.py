@@ -24,11 +24,11 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_db_client():
-    db.connect()
+    await db.connect()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    db.close()
+    await db.close()
 
 # Routers
 app.include_router(auth.router)

@@ -34,10 +34,10 @@ function Start-Server {
 }
 
 # Start all servers
-$orchestrator = Start-Server -Name "Orchestrator" -Command "uvicorn orchestrator.app:app --host 127.0.0.1 --port 9000 --reload" -Color "Red"
-$level0 = Start-Server -Name "Level0" -Command "uvicorn level0.app:app --host 127.0.0.1 --port 8000 --reload" -Color "Blue"
-$level1 = Start-Server -Name "Level1" -Command "uvicorn level1.app:app --host 127.0.0.1 --port 8001 --reload" -Color "Yellow"
-$level2 = Start-Server -Name "Level2" -Command "uvicorn level2.app:app --host 127.0.0.1 --port 8002 --reload" -Color "Magenta"
+$orchestrator = Start-Server -Name "Orchestrator" -Command "uvicorn orchestrator.app:app --host 127.0.0.1 --port 9000" -Color "Red"
+$level0 = Start-Server -Name "Level0" -Command "uvicorn level0.app:app --host 127.0.0.1 --port 8000" -Color "Blue"
+$level1 = Start-Server -Name "Level1" -Command "uvicorn level1.app:app --host 127.0.0.1 --port 8001" -Color "Yellow"
+$level2 = Start-Server -Name "Level2" -Command "uvicorn level2.app:app --host 127.0.0.1 --port 8002" -Color "Magenta"
 
 Write-Host "`nAll servers started successfully!" -ForegroundColor Green
 Write-Host "===============================================" -ForegroundColor Cyan
