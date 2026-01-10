@@ -1,35 +1,41 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
-from typing import List
-from orchestrator.agent import run_query
-from orchestrator.utils import save_uploaded_pdfs
-import logging
+from fastapi import FastAPI
+from common.logging import setup_logging
+
 import requests
 import orchestrator.config as config
-import os
-
 from fastapi.middleware.cors import CORSMiddleware
+from common.config import settings
+from common.db import db
+from orchestrator.routers import auth, gateway
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup Logging
+logger = setup_logging(__name__)
 
-PDF_DIR = os.path.join(os.path.dirname(__file__), "pdfs")
-os.makedirs(PDF_DIR, exist_ok=True)
+app = FastAPI(title="Jharkhand Chatbot Orchestrator", version="1.0.0")
 
-app = FastAPI(title="Multi-Level RAG Orchestrator Agent", version="1.0.0")
-
-
-allowed_origins = getattr(config, "ALLOWED_ORIGINS", ["*"])
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup_db_client():
+    db.connect()
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    db.close()
+
+# Routers
+app.include_router(auth.router)
+app.include_router(gateway.router)
 
 @app.get("/health")
-def healthcheck():
+def health():
     """Check orchestrator and Level servers health"""
     status = {"orchestrator": "ok", "levels": {}}
 
@@ -53,24 +59,3 @@ def healthcheck():
             status["levels"][level_name] = {"status": "down"}
 
     return status
-
-
-@app.post("/ingest")
-async def ingest(files: List[UploadFile] = File(...)):
-    try:
-        pdf_paths = save_uploaded_pdfs(files, dest_dir=PDF_DIR)
-        result = run_query(pdf_paths, action="ingest")
-        return {"message": "Ingestion completed via agent", "result": result}
-    except Exception as e:
-        logger.error(f"Ingestion failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/query")
-async def query(question: str, level: int = Query(None)):
-    try:
-        response = run_query(question, level=level)
-        return {"answer": response}
-    except Exception as e:
-        logger.error(f"Query failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))

@@ -1,31 +1,24 @@
 import os
-from dotenv import load_dotenv
-
-# Resolve paths relative to this file's directory
-_BACKEND_DIR = os.path.dirname(__file__)
-
-# Load .env from backend directory (works regardless of CWD)
-load_dotenv(os.path.join(_BACKEND_DIR, ".env"))
+from common.config import settings
 
 # Directories
-INDEX_DIR = os.getenv(
-    "INDEX_DIR", os.path.normpath(os.path.join(_BACKEND_DIR, "index"))
-)
-PDFS_DIR = os.getenv("PDFS_DIR", os.path.normpath(os.path.join(_BACKEND_DIR, "pdfs")))
+INDEX_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "index"))
+PDFS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "pdfs"))
 
 # Models
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash-lite")
+EMBEDDING_MODEL = settings.EMBEDDING_MODEL
+GEMINI_MODEL = settings.GEMINI_MODEL
 
 # Chunking
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1200"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
+CHUNK_SIZE = settings.CHUNK_SIZE
+CHUNK_OVERLAP = settings.CHUNK_OVERLAP
 
 # Retrieval
-TOP_K_DEFAULT = int(os.getenv("TOP_K", "6"))
+TOP_K_DEFAULT = settings.TOP_K_DEFAULT
 
 # API Keys
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+GOOGLE_API_KEY = settings.GOOGLE_API_KEY
+ALLOWED_ORIGINS = settings.ALLOWED_ORIGINS
 
 # Filenames for persistence
 INDEX_FILE = os.path.join(INDEX_DIR, "jharkhand_faiss.index")

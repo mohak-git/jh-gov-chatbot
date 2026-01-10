@@ -1,13 +1,13 @@
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from common.logging import setup_logging
+from fastapi.concurrency import run_in_threadpool
 import os
 import shutil
 from typing import List
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-import logging
-from fastapi.concurrency import run_in_threadpool
 
 import level2.config as config
-from level2.schemas import (
+from common.schemas import (
     IngestResponse,
     QueryRequest,
     QueryResponse,
@@ -18,30 +18,19 @@ from level2.vectorstore import FaissStore
 from level2.ingest import ingest_pdfs
 from level2.rag import RAGPipeline, EmbeddingsClient, GeminiClient
 
+# Setup Logging
+logger = setup_logging(__name__)
 
-# -------------------------------------------------------------------
-# Logging Setup
-# -------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-)
-logger = logging.getLogger(__name__)
-
-
-# -------------------------------------------------------------------
-# App Initialization
-# -------------------------------------------------------------------
+# App Init
 app = FastAPI(
-    title="Jharkhand Policies RAG Backend",
+    title="Jharkhand Policies RAG Backend (Level 2)",
     version="1.0.0",
-    description="Backend service for PDF ingestion and RAG-based querying.",
 )
 
-# Configure CORS
-allowed_origins = getattr(config, "ALLOWED_ORIGINS", ["*"])
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=config.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,7 +55,7 @@ def reset_store():
     """Safely reset the FAISS index and metadata."""
     try:
         store.reset()
-        logger.info("Vector store reset successfully.")
+        logger.info("Store reset successfully.")
     except Exception as e:
         logger.error(f"Failed to reset store: {e}")
         raise HTTPException(status_code=500, detail="Failed to reset store")
@@ -79,21 +68,24 @@ def reset_store():
 async def health():
     """Health check endpoint."""
     stats = store.stats()
-    return HealthResponse(status="ok", stats=StatsResponse(**stats))
 
-
-@app.get("/stats", response_model=StatsResponse)
-async def stats():
-    """Return vector store statistics."""
-    return StatsResponse(**store.stats())
+    return HealthResponse(
+        status="ok",
+        stats=StatsResponse(
+            vectors=stats.get("vectors", 0),
+            files_indexed=stats.get("files_indexed", 0),
+            index_path=stats.get("index_path"),
+            metadata_path=stats.get("metadata_path"),
+            index_exists=stats.get("index_exists"),
+            last_modified=stats.get("last_modified"),
+        ),
+    )
 
 
 @app.post("/ingest", response_model=IngestResponse)
 async def ingest(files: List[UploadFile] = File(...), force_rebuild: bool = False):
-    """Ingest PDFs into the vector store."""
-    logger.info(
-        f"Ingest request received with {len(files)} file(s), force_rebuild={force_rebuild}"
-    )
+    """Ingest PDF files into the vector store."""
+    logger.info(f"Ingest request: {len(files)} files, force={force_rebuild}")
 
     # Save uploaded files to PDFS_DIR
     os.makedirs(config.PDFS_DIR, exist_ok=True)
@@ -107,26 +99,22 @@ async def ingest(files: List[UploadFile] = File(...), force_rebuild: bool = Fals
     if force_rebuild:
         logger.info("Force rebuild requested, resetting store...")
         reset_store()
+
     try:
         # Process PDFs in background thread to avoid blocking event loop
         chunks = await run_in_threadpool(ingest_pdfs, config.PDFS_DIR)
-        logger.info(f"PDF ingestion completed:\n" f"  chunks = {len(chunks)}")
+        logger.info(f"Ingested {len(chunks)} chunks")
 
         await run_in_threadpool(rag.build_index, chunks)
-        num_files = len({c["source_file"] for c in chunks})
-        logger.info(
-            f"Index build completed:\n"
-            f"  files = {num_files}\n"
-            f"  total_chunks = {len(chunks)}"
-        )
+        logger.info("Index built successfully: ", chunks)
 
         stats = store.stats()
-        logger.info(f"Ingestion finished:\n" f"  vectors = {stats['vectors']}")
+        logger.info("Ingestion complete: ", stats)
 
         return IngestResponse(
-            files_processed=len({c["source_file"] for c in chunks}),
+            files_processed=len(files),
             chunks_added=len(chunks),
-            vectors=stats["vectors"],
+            vectors=stats.get("vectors", 0),
             message="Ingestion complete",
         )
     except Exception as e:
@@ -137,26 +125,18 @@ async def ingest(files: List[UploadFile] = File(...), force_rebuild: bool = Fals
 @app.post("/query", response_model=QueryResponse)
 async def query(req: QueryRequest):
     """Query the RAG pipeline with a question."""
-    top_k = req.top_k if req.top_k is not None else config.TOP_K_DEFAULT
-    max_tokens = req.max_output_tokens if req.max_output_tokens is not None else 512
-
+    top_k = req.top_k or config.TOP_K_DEFAULT
+    max_tokens = req.max_output_tokens or 512
     logger.info(
-        f"Query request received:\n"
-        f"  question = {req.question}\n"
-        f"  top_k = {top_k}\n"
-        f"  max_tokens = {max_tokens}"
+        f"Query request: {req.question}, top_k={top_k}, max_tokens={max_tokens}"
     )
 
     try:
         result = await run_in_threadpool(
             rag.answer, req.question, top_k=top_k, max_output_tokens=max_tokens
         )
-        logger.info(
-            f"Query answered:\n"
-            f"  top_k = {top_k}\n"
-            f"  citations_count = {len(result['citations'])}"
-        )
-
+        logger.info(f"Query result: {result}")
+        
         return QueryResponse(
             answer=result["answer"],
             citations=result["citations"],

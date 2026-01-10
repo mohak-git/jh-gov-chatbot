@@ -1,21 +1,20 @@
 import os
-from dotenv import load_dotenv
+from common.config import settings
 
 BASE_DIR = os.path.dirname(__file__)
-load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 # Level server URLs
-LEVEL2_URL = os.getenv("LEVEL2_URL", "http://localhost:8002")
-LEVEL1_URL = os.getenv("LEVEL1_URL", "http://localhost:8001")
-LEVEL0_URL = os.getenv("LEVEL0_URL", "http://localhost:8000")
+LEVEL2_URL = settings.LEVEL2_URL
+LEVEL1_URL = settings.LEVEL1_URL
+LEVEL0_URL = settings.LEVEL0_URL
 
 # Compression ratios
-LEVEL2_TO_1_RATIO = float(os.getenv("LEVEL2_TO_1_RATIO", 0.2))  # 1/5
-LEVEL1_TO_0_RATIO = float(os.getenv("LEVEL1_TO_0_RATIO", 0.5))  # 1/2
+LEVEL2_TO_1_RATIO = float(settings.LEVEL2_TO_1_RATIO)
+LEVEL1_TO_0_RATIO = float(settings.LEVEL1_TO_0_RATIO)
 
 # Gemini API
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash-lite")
+GOOGLE_API_KEY = settings.GOOGLE_API_KEY
+GEMINI_MODEL = settings.GEMINI_MODEL
 
 # Temporary PDF storage
 PDFS_DIR = os.path.join(BASE_DIR, "pdfs")

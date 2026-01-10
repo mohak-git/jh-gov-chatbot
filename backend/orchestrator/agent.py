@@ -1,13 +1,12 @@
-import json
 from typing import List
-from langchain.agents import Tool
+from langchain_core.tools import Tool
 from orchestrator.query_tools import QueryTool
 from orchestrator.ingestion_tools import MultiLevelIngestTool
 import orchestrator.config as config
 import logging
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.agents import AgentExecutor, create_tool_calling_agent, Tool
+from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 
