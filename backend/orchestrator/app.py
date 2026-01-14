@@ -1,11 +1,11 @@
-from fastapi import FastAPI
-from common.logging import setup_logging
-
-import requests
 import orchestrator.config as config
-from fastapi.middleware.cors import CORSMiddleware
+import requests
 from common.config import settings
 from common.db import db
+from common.logging import setup_logging
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from orchestrator.graph import chatbot_graph
 from orchestrator.routers import auth, gateway
 
 # Setup Logging
@@ -22,17 +22,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.on_event("startup")
 async def startup_db_client():
     await db.connect()
+    chatbot_graph.initialize()
+    logger.info("Chatbot graph initialized with MongoDB checkpointer")
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    chatbot_graph.close()
     await db.close()
+
 
 # Routers
 app.include_router(auth.router)
 app.include_router(gateway.router)
+
 
 @app.get("/health")
 def health():

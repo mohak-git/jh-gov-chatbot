@@ -10,7 +10,6 @@ import {
     FiBook,
     FiCheckCircle,
     FiChevronDown,
-    FiChevronUp,
     FiClock,
     FiCode,
     FiFile,
@@ -18,7 +17,7 @@ import {
     FiInfo,
     FiMessageSquare,
     FiSend,
-    FiX,
+    FiX
 } from "react-icons/fi";
 import { IoCheckmarkCircle, IoDocumentText } from "react-icons/io5";
 
@@ -159,11 +158,11 @@ export default function HomePage() {
 
         try {
             const queryParams = new URLSearchParams({
-                question,
+                message: question,
                 ...(selectedLevel !== 3 && { level: selectedLevel.toString() }),
             });
 
-            const res = await fetch(`${API_BASE}/query?${queryParams}`, {
+            const res = await fetch(`${API_BASE}/chat?${queryParams}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -174,14 +173,14 @@ export default function HomePage() {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             const data = await res.json();
-            const raw = data.answer;
 
             const assistant: AssistantMessage = {
                 role: "assistant",
-                content: raw.answer || "",
-                citations: (raw.citations || []) as Citation[],
-                prompt: raw.prompt,
+                content: data.answer || "",
+                citations: (data.citations || []) as Citation[],
+                prompt: data.prompt,
                 level: selectedLevel,
+
             };
 
             setMessages((prev) => [...prev, assistant]);
@@ -588,7 +587,9 @@ export default function HomePage() {
                                                     Analyzing
                                                 </div>
                                                 <div className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded-full text-xs">
-                                                    Lvl {selectedLevel}
+                                                    {selectedLevel === 3
+                                                        ? "Auto"
+                                                        : `Lvl ${selectedLevel}`}
                                                 </div>
                                             </div>
                                             <div className="bg-gray-800/50 rounded-2xl px-4 py-4 border border-gray-700/50 backdrop-blur-sm">
@@ -708,8 +709,7 @@ function MessageBubble({ message }: { message: Message }) {
         },
     };
 
-    const levelConfig =
-        LevelConfig[message.level as keyof typeof LevelConfig] ||
+    const levelConfig = LevelConfig[message.level as keyof typeof LevelConfig] ||
         LevelConfig[3];
 
     return (
@@ -738,6 +738,7 @@ function MessageBubble({ message }: { message: Message }) {
                         {message.level === 3
                             ? "Auto"
                             : "Level " + message.level}
+
                     </div>
                 </div>
                 <div className="bg-gray-800/50 rounded-2xl px-5 py-4 border border-gray-700/50 backdrop-blur-sm shadow-xl">
@@ -815,51 +816,7 @@ function MessageBubble({ message }: { message: Message }) {
                         </div>
                     )}
                 </div>
-
-                {/* Prompt view */}
-                {message.prompt && <PromptViewer prompt={message.prompt} />}
             </div>
         </motion.div>
-    );
-}
-
-function PromptViewer({ prompt }: { prompt: string }) {
-    const [open, setOpen] = useState(false);
-    return (
-        <div className="mt-4">
-            <button
-                onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-300 transition-colors group">
-                <div
-                    className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""
-                        } group-hover:scale-110`}>
-                    {open ? (
-                        <FiChevronUp className="w-full h-full" />
-                    ) : (
-                        <FiChevronDown className="w-full h-full" />
-                    )}
-                </div>
-                {open ? "Hide system prompt" : "Show system prompt"}
-            </button>
-            <AnimatePresence>
-                {open && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="mt-2 overflow-hidden">
-                        <div className="p-4 bg-gray-900 rounded-xl border border-gray-700/50 backdrop-blur-sm">
-                            <div className="text-xs text-gray-400 mb-2 font-mono uppercase tracking-wider flex items-center gap-2">
-                                <FiInfo className="w-3 h-3" />
-                                System Prompt
-                            </div>
-                            <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap overflow-auto max-h-64 leading-5">
-                                {prompt}
-                            </pre>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
     );
 }
